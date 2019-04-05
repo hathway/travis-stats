@@ -201,6 +201,7 @@ function retrieveJson(url, callback) {
 	if (config.travis_api_token) {
 		req = req.header("Authorization", 'token ' + config.travis_api_token);
 	}
+	req = req.header("Travis-API-Version", '3');
 	req.get(callback);
 }
 
@@ -212,31 +213,25 @@ function retrieveJson(url, callback) {
  * @param {Function} cb - Called once for each API response.
  */
 function iterBuilds(repoName, maxRequests, cb) {
-	var buildsUrl = 'https://' + config.travis_api_endpoint + '/repos/' + repoName + '/builds?event_type=push';
+	var buildsUrl = 'https://' + config.travis_api_endpoint + '/repo/' + encodeURIComponent(repoName) + '/builds';
 
-	var i=0;
-
-	var oldestBuild = Infinity;
+	var i = 0;
 
 	function handleResponse(rawBuilds) {
-		if (typeof rawBuilds.length === 'undefined') {
+		if (typeof rawBuilds.builds.length === 'undefined') {
 			alert('invalid repository: ' + repoName);
 			return;
 		}
 
-		var curOldestBuild = Math.min.apply(null, rawBuilds.map(function(build) {
-			return parseInt(build.number, 10);
-		}));
+		cb(rawBuilds.builds);
 
-		cb(rawBuilds);
-
-		if (++i < maxRequests && curOldestBuild < oldestBuild) {
-			oldestBuild = curOldestBuild;
-			retrieveJson(buildsUrl + '&after_number=' + oldestBuild, handleResponse);
+		if (!rawBuilds['@pagination'].is_last) {
+			retrieveJson('https://' + config.travis_api_endpoint + rawBuilds['@pagination'].next["@href"], handleResponse);
 		}
 	}
 
 	retrieveJson(buildsUrl, handleResponse);
+
 }
 
 function updateChart() {
@@ -260,7 +255,7 @@ function updateChart() {
 	var buildCounts = {};
 
 	function isValidBuild(build) {
-		return build.branch === branch && build.state === 'finished';
+		return build.branch.name === branch && build.event_type === 'push' && build.state === "passed";
 	}
 
 	function filterBuilds(rawBuilds) {
