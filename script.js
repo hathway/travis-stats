@@ -4,6 +4,8 @@ var defaultConfig = {
 	travis_api_token: false,
 }
 var config;
+var chart;
+var buildMap = {};
 
 d3.round = function(x, n) { var ten_n = Math.pow(10,n); return Math.round(x * ten_n) / ten_n; }
 
@@ -258,19 +260,19 @@ function updateChart() {
 		return build.branch.name === branch && build.event_type === 'push' && build.state === "passed";
 	}
 
+	function addBuildToChartData(build) {
+		buildMap[build.number] = build;
+		chart.data.labels.unshift(build.number);
+		chart.data.datasets[0].data.unshift(build.duration);
+	}
+
 	function filterBuilds(rawBuilds) {
 		var filteredBuilds = rawBuilds.filter(isValidBuild);
 
 		if (!filteredBuilds.length) return;
 
-		filteredBuilds.forEach(function(build) {
-			builds.push(build);
-			updateBuildCounts(buildCounts, build);
-		});
-
-		renderBuildTimes('#build-times-duration', getDuration, builds, baseUrl);
-		renderBuildTimes('#build-times', getClockTime, builds, baseUrl);
-		renderBuildCounts('#build-counts', d3.entries(buildCounts), baseUrl);
+		filteredBuilds.forEach(addBuildToChartData);
+		chart.update();
 	}
 
 	iterBuilds(repoName, reqCount, filterBuilds);
@@ -319,6 +321,26 @@ function getConfigUrl() {
 	return location.pathname.replace('index.html', '') + 'config.json';
 }
 
+function getTooltipLabel(tooltipItem, data) {
+	let build = buildMap[tooltipItem[0].label];
+	let commit = build.commit;
+	return commit.message.split(/\n/);
+}
+
+function handleClickEvent(event) {
+		var firstPoint = chart.getElementAtEvent(event)[0];
+
+		if (firstPoint) {
+			let label = chart.data.labels[firstPoint._index];
+			let build = buildMap[label];
+			if (build === undefined) {
+				return;
+			}
+			let link = `https://travis-ci.com/${build.repository.slug}/builds/${build.id}`
+			window.open(link,'_blank');
+		}
+}
+
 updateInputViaHash();
 
 d3.json(getConfigUrl())
@@ -327,6 +349,47 @@ d3.json(getConfigUrl())
 	})
 	.on('load', function(response) {
 		config = response;
+		let canvas = document.getElementById('myChart')
+		let ctx = canvas.getContext('2d');
+		chart = new Chart(ctx, {
+			type: 'line',
+			data: {
+				labels: [],
+				datasets: [{
+					label: 'Build Time',
+					data: [],
+					borderWidth: 1
+				}]
+			},
+			options: {
+				tooltips: {
+					callbacks: {
+						afterBody: getTooltipLabel,
+						beforeTitle: function(tooltipItem, data) { return "Build #" }
+					}
+				},
+				scales: {
+					yAxes: [{
+						scaleLabel: {
+							display: true,
+							labelString: 'Build Number'
+						},
+						ticks: {
+							beginAtZero: true
+						}
+					}],
+					xAxes: [{
+						scaleLabel: {
+							display: true,
+							labelString: 'Build Duration'
+						},
+					}]
+				}
+			}
+		});
+
+		canvas.onclick = handleClickEvent;
+
 		updateChart();
 	})
 	.get();
