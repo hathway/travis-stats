@@ -349,7 +349,10 @@ d3.json(getConfigUrl())
 	})
 	.on('load', function(response) {
 		config = response;
-		let canvas = document.getElementById('myChart')
+		let canvas = document.getElementById('myChart');
+		canvas.width  = window.innerWidth;
+		canvas.height = window.innerHeight * (3/4);
+
 		let ctx = canvas.getContext('2d');
 		chart = new Chart(ctx, {
 			type: 'line',
